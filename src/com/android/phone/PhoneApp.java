@@ -108,6 +108,8 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     private static final int EVENT_TTY_MODE_GET = 15;
     private static final int EVENT_TTY_MODE_SET = 16;
     private static final int EVENT_START_SIP_SERVICE = 17;
+    
+    public static final int TEST = 1;
 
     // The MMI codes are also used by the InCallScreen.
     public static final int MMI_INITIATE = 51;
@@ -204,6 +206,8 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     private KeyguardManager mKeyguardManager;
     private AccelerometerListener mAccelerometerListener;
     private int mOrientation = AccelerometerListener.ORIENTATION_UNKNOWN;
+    
+    private int mLastOrientation = AccelerometerListener.ORIENTATION_FLIPDOWN;
 
     // Broadcast receiver for various intent broadcasts (see onCreate())
     private final BroadcastReceiver mReceiver = new PhoneAppBroadcastReceiver();
@@ -1103,6 +1107,14 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
                        + ", showingDisc " + showingDisconnectedConnection + ")");
         // keepScreenOn == true means we'll hold a full wake lock:
         requestWakeState(keepScreenOn ? WakeState.FULL : WakeState.SLEEP);
+        
+        // if phone is ringing, enable AccelerometerListener
+        // to check for flipdown and pickup
+        if(isRinging){
+        	if(!mAccelerometerListener.isEnabled()){
+        		mAccelerometerListener.enable(true);
+        	}
+        }
     }
 
     /**
@@ -1198,7 +1210,15 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
      */
     /* package */ void updateProximitySensorMode(Phone.State state) {
         if (VDBG) Log.d(LOG_TAG, "updateProximitySensorMode: state = " + state);
-
+        
+        if (state == Phone.State.IDLE) {
+        	mLastOrientation = AccelerometerListener.ORIENTATION_FLIPDOWN;
+        	
+        	if(mAccelerometerListener.isEnabled()){
+        		mAccelerometerListener.enable(false);
+        	}
+        }
+        
         if (proximitySensorModeEnabled()) {
             synchronized (mProximityWakeLock) {
                 // turn proximity sensor off and turn screen on immediately if
@@ -1249,6 +1269,13 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     public void orientationChanged(int orientation) {
         mOrientation = orientation;
         updateProximitySensorMode(mCM.getState());
+        
+        if (orientation == AccelerometerListener.ORIENTATION_FLIPDOWN) {
+	        if ((mLastOrientation != AccelerometerListener.ORIENTATION_FLIPDOWN)) {    
+	        	mInCallScreen.hangupRingingCall();
+			}
+        }
+        mLastOrientation = orientation;
     }
 
     /**
