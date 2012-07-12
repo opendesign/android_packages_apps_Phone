@@ -139,14 +139,14 @@ public final class AccelerometerListener {
         int orientation = (angle >  VERTICAL_ANGLE ? ORIENTATION_VERTICAL : ORIENTATION_HORIZONTAL);
         
 		// check for flipdown
-		if (z < -8.0) {
+		if (z < -8.5) {
 			orientation = ORIENTATION_FLIPDOWN;
 		}
 
 		// check for pickup
-		//if (y > 7) {
-		//	orientation = ORIENTATION_PICKUP;
-		//}
+		if (y > 7) {
+			orientation = ORIENTATION_PICKUP;
+		}
         
         if (VDEBUG) Log.d(TAG, "angle: " + angle + " orientation: " + orientation);
         setOrientation(orientation);
