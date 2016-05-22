@@ -3331,7 +3331,7 @@ public class InCallScreen extends Activity
      * Answer a ringing call.  This method does nothing if there's no
      * ringing or waiting call.
      */
-    private void internalAnswerCall() {
+    public void internalAnswerCall() {
         log("internalAnswerCall()...");
         // if (DBG) PhoneUtils.dumpCallState(mPhone);
 

@@ -16,6 +16,8 @@
 
 package com.android.phone;
 
+//import android.widget.Toast;
+
 import android.app.Activity;
 import android.app.Application;
 import android.app.KeyguardManager;
@@ -67,6 +69,12 @@ import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.os.HandlerThread;
 
+// motion call
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+
 /**
  * Top-level Application class for the Phone app.
  */
@@ -108,6 +116,8 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     private static final int EVENT_TTY_MODE_GET = 15;
     private static final int EVENT_TTY_MODE_SET = 16;
     private static final int EVENT_START_SIP_SERVICE = 17;
+    
+    public static final int TEST = 1;
 
     // The MMI codes are also used by the InCallScreen.
     public static final int MMI_INITIATE = 51;
@@ -204,6 +214,8 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     private KeyguardManager mKeyguardManager;
     private AccelerometerListener mAccelerometerListener;
     private int mOrientation = AccelerometerListener.ORIENTATION_UNKNOWN;
+    
+    private int mLastOrientation = AccelerometerListener.ORIENTATION_FLIPDOWN;
 
     // Broadcast receiver for various intent broadcasts (see onCreate())
     private final BroadcastReceiver mReceiver = new PhoneAppBroadcastReceiver();
@@ -246,6 +258,13 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     private AlarmManager mAM;
     private HandlerThread mVibrationThread;
     private Handler mVibrationHandler;
+    
+    //motion call sensor variables
+    private SensorManager mSensorManager;
+    private Sensor mSensor;
+    private boolean isNearFace;
+    private boolean mEnabled = false;
+    private boolean wasAlreadyNotNearFace = false;
 
     /**
      * Set the restore mute state flag. Used when we are setting the mute state
@@ -701,6 +720,40 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
     static String getCallScreenClassName() {
         return InCallScreen.class.getName();
     }
+    
+	/**
+	 * SensorEventListener to listen to Proximity Sensor needed to motion accept
+	 * a call
+	 */
+	SensorEventListener mSensorListener = new SensorEventListener() {
+		public void onSensorChanged(SensorEvent event) {
+			onProximitySensorEvent(event.values[0]);
+			if (event.values[0] > 0) {
+				wasAlreadyNotNearFace = true;
+			}
+		}
+
+		public void onAccuracyChanged(Sensor sensor, int accuracy) {
+			// ignore
+		}
+	};
+
+	private void onProximitySensorEvent(float sensorValue) {
+		isNearFace = (sensorValue > 0) ? false : true;	
+	}
+
+	private void enableProximitySensor(boolean enable) {
+		if (enable) {
+			mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+			mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY);
+			mSensorManager.registerListener(mSensorListener, mSensor,
+					SensorManager.SENSOR_DELAY_NORMAL);
+			mEnabled = true;
+		} else {
+			mSensorManager.unregisterListener(mSensorListener);
+			mEnabled = false;
+		}
+	}
 
     /**
      * Starts the InCallScreen Activity.
@@ -1103,7 +1156,20 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
                        + ", showingDisc " + showingDisconnectedConnection + ")");
         // keepScreenOn == true means we'll hold a full wake lock:
         requestWakeState(keepScreenOn ? WakeState.FULL : WakeState.SLEEP);
-    }
+        
+		// if phone is ringing, enable AccelerometerListener
+		// to check for flipdown and pickup
+		if (isRinging) {
+			if (!mAccelerometerListener.isEnabled()) {
+				mAccelerometerListener.enable(true);
+			}
+			if (!mEnabled) {
+				Log.w(LOG_TAG, "if (!mEnabled)");
+				enableProximitySensor(true);
+			}
+			Log.w(LOG_TAG, "isRinging");
+		}
+	}
 
     /**
      * Wrapper around the PowerManagerService.preventScreenOn() API.
@@ -1198,7 +1264,14 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
      */
     /* package */ void updateProximitySensorMode(Phone.State state) {
         if (VDBG) Log.d(LOG_TAG, "updateProximitySensorMode: state = " + state);
-
+        
+        if (state == Phone.State.IDLE) {
+        	mLastOrientation = AccelerometerListener.ORIENTATION_FLIPDOWN;
+        	
+        	if (mAccelerometerListener.isEnabled()) mAccelerometerListener.enable(false);
+        	if (mEnabled) enableProximitySensor(false);
+        }
+        
         if (proximitySensorModeEnabled()) {
             synchronized (mProximityWakeLock) {
                 // turn proximity sensor off and turn screen on immediately if
@@ -1246,10 +1319,32 @@ public class PhoneApp extends Application implements AccelerometerListener.Orien
         }
     }
 
-    public void orientationChanged(int orientation) {
-        mOrientation = orientation;
-        updateProximitySensorMode(mCM.getState());
-    }
+	public void orientationChanged(int orientation) {
+		mOrientation = orientation;
+		updateProximitySensorMode(mCM.getState());
+		switch (orientation) {
+		case AccelerometerListener.ORIENTATION_FLIPDOWN:
+			if ((mLastOrientation != AccelerometerListener.ORIENTATION_FLIPDOWN)) {
+				mInCallScreen.hangupRingingCall();
+			}
+			break;
+		case AccelerometerListener.ORIENTATION_PICKUP:
+			if (isNearFace) {
+				if (wasAlreadyNotNearFace) {
+					mInCallScreen.internalAnswerCall();
+				} else {
+					//Toast.makeText(this, "NOT wasAlreadyNotNearFace",
+					//		Toast.LENGTH_SHORT).show();
+				}
+			} else {
+				//Toast.makeText(this, "NOT isNearFace", Toast.LENGTH_SHORT)
+				//		.show();
+			}
+			break;
+		}
+
+		mLastOrientation = orientation;
+	}
 
     /**
      * Notifies the phone app when the phone state changes.

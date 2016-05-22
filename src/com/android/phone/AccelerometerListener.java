@@ -48,16 +48,21 @@ public final class AccelerometerListener {
 
     private OrientationListener mListener;
 
-    // Device orientation
-    public static final int ORIENTATION_UNKNOWN = 0;
-    public static final int ORIENTATION_VERTICAL = 1;
-    public static final int ORIENTATION_HORIZONTAL = 2;
+	// Device orientation
+	public static final int ORIENTATION_UNKNOWN = 0;
+	public static final int ORIENTATION_VERTICAL = 1;
+	public static final int ORIENTATION_HORIZONTAL = 2;
 
-    private static final int ORIENTATION_CHANGED = 1234;
+	public static final int ORIENTATION_FLIPDOWN = 3;
+	public static final int ORIENTATION_PICKUP = 4;
 
-    private static final int VERTICAL_DEBOUNCE = 100;
-    private static final int HORIZONTAL_DEBOUNCE = 500;
-    private static final double VERTICAL_ANGLE = 50.0;
+	private static final int ORIENTATION_CHANGED = 1234;
+
+	private static final int VERTICAL_DEBOUNCE = 100;
+	private static final int HORIZONTAL_DEBOUNCE = 500;
+	private static final double VERTICAL_ANGLE = 50.0;
+    
+    private boolean mEnable = false;
 
     public interface OrientationListener {
         public void orientationChanged(int orientation);
@@ -68,7 +73,11 @@ public final class AccelerometerListener {
         mSensorManager = (SensorManager)context.getSystemService(Context.SENSOR_SERVICE);
         mSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
     }
-
+    
+	public boolean isEnabled() {
+		return mEnable;
+	}
+    
     public void enable(boolean enable) {
         if (DEBUG) Log.d(TAG, "enable(" + enable + ")");
         synchronized (this) {
@@ -82,6 +91,8 @@ public final class AccelerometerListener {
                 mHandler.removeMessages(ORIENTATION_CHANGED);
             }
         }
+        
+        mEnable = enable;
     }
 
     private void setOrientation(int orientation) {
@@ -126,6 +137,17 @@ public final class AccelerometerListener {
         // convert to degrees
         angle = angle * 180.0 / Math.PI;
         int orientation = (angle >  VERTICAL_ANGLE ? ORIENTATION_VERTICAL : ORIENTATION_HORIZONTAL);
+        
+		// check for flipdown
+		if (z < -8.5) {
+			orientation = ORIENTATION_FLIPDOWN;
+		}
+
+		// check for pickup
+		if (y > 7) {
+			orientation = ORIENTATION_PICKUP;
+		}
+        
         if (VDEBUG) Log.d(TAG, "angle: " + angle + " orientation: " + orientation);
         setOrientation(orientation);
     }
